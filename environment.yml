@@ -1,0 +1,11 @@
+name: cleanroom-cfd
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - jupyter
+  - notebook
+  - numpy
+  - matplotlib
+  - ipython
+  - pillow
