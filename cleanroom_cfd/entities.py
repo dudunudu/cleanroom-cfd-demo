@@ -12,7 +12,7 @@ ENTITY_CATALOGE = {
         "is_active": True,
     },
     "air_coditioning": {
-        "base_temperature": 18.0,
+        "base_temperature": -5.0,
         "velocity": (0.0, -1.5),
         "is_active": True,
         "blocks_airflow": False,
@@ -24,7 +24,7 @@ ENTITY_CATALOGE = {
     },
     "human": {
         "base_temperature": 37.0,
-        "blocks_airfllow": True,
+        "blocks_airflow": True,
         "heat_emission": True,
     },
 }
@@ -35,7 +35,7 @@ class Entity:
         self.type = type_id
         self.id_name = id_name or f"{type_id}_{id(self)}"
 
-        # Geometry positioin
+        # Geometry position
         self.x = x_m
         self.y = y_m
         self.width = width_m
@@ -49,22 +49,22 @@ class Entity:
         self.blocks_airflow = config.get("blocks_airflow", False)
         self.friction = config.get("friction", 0.0)
         self.vel_x, self.vel_y = config.get("velocity", (0.0, 0.0))
+        self.is_outlet = config.get("is_outlet", False)
 
-        def get_mask(self, res, grid_h, grid_w):
-            """Return the boolean mask of the entity in the grid"""
+    def get_mask(self, res, grid_h, grid_w):
+        """Return the boolean mask of the entity in the grid"""
 
-            x_idx = int(self.x * res)
-            y_idx = int(self.y * res)
-            w_idx = int(self.width * res)
-            h_idx = int(self.height * res)
+        x_idx = int(self.x * res)
+        y_idx = int(self.y * res)
+        w_idx = int(self.width * res)
+        h_idx = int(self.height * res)
 
-            # Ensure limits
-            return slice(max(0, y_idx), min(grid_h, y_idx + h_idx)), \
-                    slice(max(0, x_idx), min(grid_w, x_idx + w_idx))
+        # Ensure limits
+        return slice(max(0, y_idx), min(grid_h, y_idx + h_idx)), \
+                slice(max(0, x_idx), min(grid_w, x_idx + w_idx))
         
 
-
-    def apply_to_grid(self, T, u, v, res):
+    def apply_to_grid(self, T, u, v, p, res):
 
         if not self.is_active:
             return
@@ -88,7 +88,8 @@ class Entity:
             u[s_y, s_x] *= (1.0 - self.friction)
             v[s_y, s_x] *= (1.0 - self.friction)
 
+        if self.is_outlet:
+            p[s_y, s_x] = 0.0
 
-
-
-
+    def get_current_temp(self):
+        return self.temp_target if self.is_active else None

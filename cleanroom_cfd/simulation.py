@@ -1,6 +1,7 @@
 import numpy as np
 from .numerics import advect_upwind, laplacian, apply_scalar_bc, apply_velocity_bc
 from .pressure import project_incompressible
+from .entities import Entity 
 
 
 def compute_time_step(dx, sock_speed, alpha_heat, nu_eff):
@@ -18,7 +19,7 @@ def make_flow_obstacle(is_obstacle, src_y0, src_y1):
 
 def cfd_step(
     T, sock_tracer, u, v, p, *,
-    dx, dt, is_obstacle, flow_obstacle,
+    dx, dt, entities_list, res, is_obstacle,
     src_y0, src_y1,
     hs_x, hs_y, bubble_r,
     alpha_heat, nu_eff, rho, beta_b, g, T_ref,
@@ -33,54 +34,57 @@ def cfd_step(
     - no upper/upward emission
     """
 
-    # Force the sock direction to match the original notebook: downward only
+    p_next = p.copy()
     v_sock_target = -abs(sock_speed)
+    inject_strength = 0.55
 
-    # 1) Advect momentum
+    # 1. Dynamic flow_obstacle (SVG + Entity)
+    flow_obstacle = is_obstacle.copy()
+    # Open teh space of the air sock (direction of make_flow_obstacle)
+    flow_obstacle[src_y0:src_y1, 1:-1] = False
+
+    for ent in entities_list:
+        if ent.is_active and ent.blocks_airflow:
+            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
+            flow_obstacle[s_y, s_x] = True
+
+    # 2. Advection (velocity transport and self-advection)
+    # v_forced = v + dt * g * beta_b * (T - T_ref)
+    # u_forced = u.copy()
+
     u_star = advect_upwind(u, u, v, dt, dx)
     v_star = advect_upwind(v, u, v, dt, dx)
 
-    # 2) Original-style sock forcing:
-    # full-width band, downward only
-    inject_strength = 0.55
-    v_star[src_y0:src_y1, 1:-1] = (
-        (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1]
-        + inject_strength * v_sock_target
-    )
+    # 3. Sock injection
+    v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
     u_star[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
 
-    # 3) Optional buoyancy
+    # 4. Gravity and buoyancy (Boussinesq approximation)
     if beta_b != 0.0:
         v_star[1:-1, 1:-1] += dt * (g * beta_b * (T[1:-1, 1:-1] - T_ref))
 
-    # 4) Diffuse momentum
-    u_star += dt * nu_eff * laplacian(u_star, dx)
-    v_star += dt * nu_eff * laplacian(v_star, dx)
+    # 5. Difussion (Lpalacian)
+    u_next = u_star + dt * nu_eff * laplacian(u_star, dx)
+    v_next = v_star + dt * nu_eff * laplacian(v_star, dx)
 
-    # 5) Apply velocity BCs before pressure solve
+    # 6. Apply mechanic entities (Mechanics: air conditioning, friction)
+    for ent in entities_list:
+        ent.apply_to_grid(T, u_next, v_next, p, res)
+
+    # 7. Apply BCs (Velocities: no-slip on walls, sock injection)
     u_star, v_star = apply_velocity_bc(u_star, v_star, flow_obstacle)
+    v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
 
-    # Keep the sock open and active after BCs too
-    v_star[src_y0:src_y1, 1:-1] = (
-        (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1]
-        + inject_strength * v_sock_target
-    )
-    u_star[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
-
-    # 6) Pressure projection
+    # 8. Pressure projection maintain incompressibility and apply BCs
     u_next, v_next, p_next = project_incompressible(
-        u_star, v_star, p, dx, dt, rho, pressure_iters, flow_obstacle
+        u_next, v_next, p, dx, dt, rho, pressure_iters, flow_obstacle
     )
 
-    # 7) Re-impose the sock once after pressure solve
-    v_next[src_y0:src_y1, 1:-1] = (
-        (1.0 - inject_strength) * v_next[src_y0:src_y1, 1:-1]
-        + inject_strength * v_sock_target
-    )
-    u_next[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
+    # 9. Sock, again (3rd time) after pressure projection to maintain constant flow
+    v_next[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_next[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
 
-    # 8) Clamp speed for stability
-    speed = np.sqrt(u_next * u_next + v_next * v_next)
+    # Clamp speed
+    speed = np.sqrt(u_next**2 + v_next**2)
     mask = speed > max_speed
     if np.any(mask):
         u_next[mask] *= max_speed / speed[mask]
@@ -88,40 +92,28 @@ def cfd_step(
 
     u_next, v_next = apply_velocity_bc(u_next, v_next, flow_obstacle)
 
-    # Final re-impose so the sock remains continuously active
-    v_next[src_y0:src_y1, 1:-1] = (
-        (1.0 - inject_strength) * v_next[src_y0:src_y1, 1:-1]
-        + inject_strength * v_sock_target
-    )
-    u_next[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
-
-    # 9) Temperature transport
+    # 10. Temperature transport
     T_next = advect_upwind(T, u_next, v_next, dt, dx)
     T_next[1:-1, 1:-1] += dt * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
 
-    # Inject cold supply air in the same full-width sock band
-    temp_inject_strength = 0.35
-    T_next[src_y0:src_y1, 1:-1] = (
-        (1.0 - temp_inject_strength) * T_next[src_y0:src_y1, 1:-1]
-        + temp_inject_strength * supply_temp
-    )
+    # Apply entities (Thermal: heat sources)
+    T_next[is_obstacle] = T_ref
 
-    # Original hotspot / furniture behavior
-    T_next[is_obstacle] = 18.0
-    T_next[hs_y-bubble_r:hs_y+bubble_r, hs_x-bubble_r:hs_x+bubble_r] = 80.0
+    for ent in entities_list:
+        current_t = ent.get_current_temp()
+        if current_t is not None:
+            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
+            # Force the temperature to target value (human and AC)
+            T_next[s_y, s_x] = current_t
+
     T_next = apply_scalar_bc(T_next)
 
-    # 10) Tracer for the sock air
+    # 11. Air trace (smoke)
     tracer_next = advect_upwind(sock_tracer, u_next, v_next, dt, dx)
     tracer_next[1:-1, 1:-1] += dt * smoke_diff * laplacian(tracer_next, dx)[1:-1, 1:-1]
-
-    # Full-width, downward-only sock tracer source
-    tracer_next[src_y0:src_y1, 1:-1] = np.maximum(
-        tracer_next[src_y0:src_y1, 1:-1], 0.9
-    )
-
+    tracer_next[src_y0:src_y1, 1:-1] = np.maximum(tracer_next[src_y0:src_y1, 1:-1], 0.9)
     tracer_next[is_obstacle] = 0.0
     tracer_next = np.clip(tracer_next, 0.0, 1.0)
     tracer_next = apply_scalar_bc(tracer_next)
 
-    return T_next, tracer_next, u_next, v_next, p_next
+    return T_next, sock_tracer, u_next, v_next, p_next
