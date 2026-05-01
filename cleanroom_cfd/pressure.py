@@ -2,13 +2,16 @@ import numpy as np
 from .numerics import apply_velocity_bc
 
 
-def project_incompressible(u, v, p, dx, dt, rho, pressure_iters, flow_obstacle):
+def project_incompressible(u, v, p, dx, dt, rho, pressure_iters, flow_obstacle, darcy_mask=None, darcy_coeff=None):
     div = np.zeros_like(p)
     div[1:-1, 1:-1] = (
         (u[1:-1, 2:] - u[1:-1, :-2]) +
         (v[2:, 1:-1] - v[:-2, 1:-1])
     ) / (2.0 * dx)
     div[flow_obstacle] = 0.0
+
+    if darcy_mask is not None and darcy_coeff is not None:
+        div[darcy_mask] *= np.exp(-darcy_coeff[darcy_mask] * dt)
 
     rhs = (rho / dt) * div
     p_old = p.copy()

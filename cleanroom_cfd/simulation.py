@@ -40,13 +40,14 @@ def cfd_step(
 
     # 1. Dynamic flow_obstacle (SVG + Entity)
     flow_obstacle = is_obstacle.copy()
-    # Open teh space of the air sock (direction of make_flow_obstacle)
+    # Open the space of the air sock (direction of make_flow_obstacle)
     flow_obstacle[src_y0:src_y1, 1:-1] = False
 
     for ent in entities_list:
-        if ent.is_active and ent.blocks_airflow:
+        if ent.is_active:
             s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
-            flow_obstacle[s_y, s_x] = True
+            
+            flow_obstacle[s_y, s_x] = ent.blocks_airflow
 
     # 2. Advection (velocity transport and self-advection)
     # v_forced = v + dt * g * beta_b * (T - T_ref)
@@ -63,21 +64,34 @@ def cfd_step(
     if beta_b != 0.0:
         v_star[1:-1, 1:-1] += dt * (g * beta_b * (T[1:-1, 1:-1] - T_ref))
 
-    # 5. Difussion (Lpalacian)
+    # 5. Difussion (Laplacian)
     u_next = u_star + dt * nu_eff * laplacian(u_star, dx)
     v_next = v_star + dt * nu_eff * laplacian(v_star, dx)
+
 
     # 6. Apply mechanic entities (Mechanics: air conditioning, friction)
     for ent in entities_list:
         ent.apply_to_grid(T, u_next, v_next, p, res)
 
     # 7. Apply BCs (Velocities: no-slip on walls, sock injection)
-    u_star, v_star = apply_velocity_bc(u_star, v_star, flow_obstacle)
-    v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
+    # u_star, v_star = apply_velocity_bc(u_star, v_star, flow_obstacle)
+    # v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
 
     # 8. Pressure projection maintain incompressibility and apply BCs
+    darcy_mask = np.zeros_like(flow_obstacle)  # bool array
+    darcy_coeff_grid = np.zeros_like(p)
+
+    for ent in entities_list:
+        if ent.is_active and not ent.blocks_airflow and ent.friction > 0.0:
+            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
+            darcy_mask[s_y, s_x] = True
+            darcy_coeff_grid[s_y, s_x] = ent.friction * ent.darcy_resistance
+
+    # 8. Pressure projection con Darcy integrado
     u_next, v_next, p_next = project_incompressible(
-        u_next, v_next, p, dx, dt, rho, pressure_iters, flow_obstacle
+        u_next, v_next, p_next, dx, dt, rho, pressure_iters, flow_obstacle,
+        darcy_mask=darcy_mask,
+        darcy_coeff=darcy_coeff_grid
     )
 
     # 9. Sock, again (3rd time) after pressure projection to maintain constant flow
@@ -96,7 +110,6 @@ def cfd_step(
     T_next = advect_upwind(T, u_next, v_next, dt, dx)
     T_next[1:-1, 1:-1] += dt * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
 
-    # Apply entities (Thermal: heat sources)
     T_next[is_obstacle] = T_ref
 
     for ent in entities_list:
@@ -106,6 +119,8 @@ def cfd_step(
             # Force the temperature to target value (human and AC)
             T_next[s_y, s_x] = current_t
 
+    # Apply entities (Thermal: heat sources)
+    
     T_next = apply_scalar_bc(T_next)
 
     # 11. Air trace (smoke)
@@ -116,4 +131,4 @@ def cfd_step(
     tracer_next = np.clip(tracer_next, 0.0, 1.0)
     tracer_next = apply_scalar_bc(tracer_next)
 
-    return T_next, sock_tracer, u_next, v_next, p_next
+    return T_next, tracer_next, u_next, v_next, p_next

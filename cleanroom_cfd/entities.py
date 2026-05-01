@@ -9,10 +9,11 @@ ENTITY_CATALOGE = {
         "base_temperature": 45.0,
         "blocks_airflow": False,
         "friction": 0.5,
+        "darcy_resistance": 30.0,
         "is_active": True,
     },
     "air_coditioning": {
-        "base_temperature": -5.0,
+        "base_temperature": -15.0,
         "velocity": (0.0, -1.5),
         "is_active": True,
         "blocks_airflow": False,
@@ -50,6 +51,7 @@ class Entity:
         self.friction = config.get("friction", 0.0)
         self.vel_x, self.vel_y = config.get("velocity", (0.0, 0.0))
         self.is_outlet = config.get("is_outlet", False)
+        self.darcy_resistance = config.get("darcy_resistance", 0.0)
 
     def get_mask(self, res, grid_h, grid_w):
         """Return the boolean mask of the entity in the grid"""
@@ -84,12 +86,14 @@ class Entity:
         if self.blocks_airflow:
             u[s_y, s_x] = 0.0
             v[s_y, s_x] = 0.0
-        elif self.friction > 0.0:
-            u[s_y, s_x] *= (1.0 - self.friction)
-            v[s_y, s_x] *= (1.0 - self.friction)
 
         if self.is_outlet:
             p[s_y, s_x] = 0.0
 
     def get_current_temp(self):
+        # Max T and amount time 
         return self.temp_target if self.is_active else None
+    
+    # Goals each person should reach end project
+    # heating and cooling implementation
+    # Edit so the implementation is easier with the excel documentation

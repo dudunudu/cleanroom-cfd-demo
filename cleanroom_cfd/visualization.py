@@ -82,6 +82,17 @@ def animate_simulation(
         "p": p,
     }
 
+    sub = 10  # Dibujar una flecha cada 10 celdas para no saturar
+    X, Y = np.meshgrid(
+    np.linspace(0, svg_width_m, state["u"].shape[1]),
+    np.linspace(0, svg_height_m, state["u"].shape[0])
+    )
+    q_v = ax.quiver(
+    X[::sub, ::sub], Y[::sub, ::sub], 
+    state["u"][::sub, ::sub], state["v"][::sub, ::sub],
+    color='white', alpha=0.6, scale=15
+    )
+
     def update(frame):
         for _ in range(substeps_per_frame):
             state["T"], state["tracer"], state["u"], state["v"], state["p"] = step_fn(
@@ -102,6 +113,7 @@ def animate_simulation(
             f'Supply temp: {T_supply:.1f} °C\n'
             f'Max air speed now: {max_v:.2f} m/s'
         )
+        q_v.set_UVC(state["u"][::sub, ::sub], state["v"][::sub, ::sub])
 
         return temp_im, smoke_im, info_text
 
