@@ -1,7 +1,6 @@
 import numpy as np
 from .numerics import advect_upwind, laplacian, apply_scalar_bc, apply_velocity_bc
 from .pressure import project_incompressible
-from .entities import Entity 
 
 
 def compute_time_step(dx, sock_speed, alpha_heat, nu_eff):
@@ -9,12 +8,6 @@ def compute_time_step(dx, sock_speed, alpha_heat, nu_eff):
     dt_diff_T = dx**2 / (4 * alpha_heat)
     dt_diff_u = dx**2 / (4 * nu_eff)
     return min(dt_adv, dt_diff_T, dt_diff_u) * 0.20
-
-
-def make_flow_obstacle(is_obstacle, src_y0, src_y1):
-    flow_obstacle = is_obstacle.copy()
-    flow_obstacle[src_y0:src_y1, 1:-1] = False
-    return flow_obstacle
 
 
 def cfd_step(
@@ -46,7 +39,6 @@ def cfd_step(
     for ent in entities_list:
         if ent.is_active:
             s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
-            
             flow_obstacle[s_y, s_x] = ent.blocks_airflow
 
     # 2. Advection (velocity transport and self-advection)
@@ -68,10 +60,9 @@ def cfd_step(
     u_next = u_star + dt * nu_eff * laplacian(u_star, dx)
     v_next = v_star + dt * nu_eff * laplacian(v_star, dx)
 
-
     # 6. Apply mechanic entities (Mechanics: air conditioning, friction)
     for ent in entities_list:
-        ent.apply_to_grid(T, u_next, v_next, p, res)
+        ent.apply_mechanics(u_next, v_next, p_next, res, T.shape[0], T.shape[1])
 
     # 7. Apply BCs (Velocities: no-slip on walls, sock injection)
     # u_star, v_star = apply_velocity_bc(u_star, v_star, flow_obstacle)
@@ -120,15 +111,6 @@ def cfd_step(
 
     # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
 
-    # Entities force their temperature on the furniture points (Thermal: heat sources)
-    for ent in entities_list:
-        if ent.is_active and ent.temp_target is not None:
-            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
-            h_conv = 15.0
-            T_next[s_y, s_x] += dt * h_conv * (ent.temp_target - T_next[s_y, s_x])
-
-    T_next = apply_scalar_bc(T_next)
-
     # Sock temperature 
     T_next[src_y0:src_y1, 1:-1] = (
         (1.0 - inject_strength) * T_next[src_y0:src_y1, 1:-1] 
@@ -137,12 +119,9 @@ def cfd_step(
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
-        current_t = ent.get_current_temp()
-        if current_t is not None:
-            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
-            h_conv = 15.0  # subido de 5 a 15
-            T_next[s_y, s_x] += dt * h_conv * (ent.temp_target - T_next[s_y, s_x])
-            # T_next[s_y, s_x] = current_t
+        ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=15.0)
+
+    T_next = apply_scalar_bc(T_next)
 
     # 11. Air trace (smoke)
     tracer_next = advect_upwind(sock_tracer, u_next, v_next, dt, dx)

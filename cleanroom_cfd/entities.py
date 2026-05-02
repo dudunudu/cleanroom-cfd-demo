@@ -12,7 +12,7 @@ ENTITY_CATALOGE = {
         "darcy_resistance": 30.0,
         "is_active": True,
     },
-    "air_coditioning": {
+    "air_conditioning": {
         "base_temperature": -15.0,
         "velocity": (0.0, -1.5),
         "is_active": True,
@@ -74,17 +74,12 @@ class Entity:
         return slice(max(0, y_idx), min(grid_h, y_idx + h_idx)), \
                 slice(max(0, x_idx), min(grid_w, x_idx + w_idx))
         
-
-    def apply_to_grid(self, T, u, v, p, res):
+    def apply_mechanics(self, u, v, p, res, grid_h, grid_w):
 
         if not self.is_active:
             return
         
-        s_y, s_x = self.get_mask(res, T.shape[0], T.shape[1])
-
-        # Termic effect
-        if self.temp_target is not None:
-            T[s_y, s_x] = self.temp_target
+        s_y, s_x = self.get_mask(res, grid_h, grid_w)
 
         # Mechanic effect
         if self.vel_x != 0 or self.vel_y != 0:
@@ -106,6 +101,14 @@ class Entity:
 
         if self.is_outlet:
             p[s_y, s_x] = 0.0
+
+    def apply_thermal(self, T, dt, res, grid_h, grid_w, h_conv=15.0):
+
+        if not self.is_active or self.temp_target is None:
+            return
+        
+        s_y, s_x = self.get_mask(res, grid_h, grid_w)
+        T[s_y, s_x] += dt * h_conv * (self.temp_target - T[s_y, s_x])
 
     def get_current_temp(self):
         # Max T and amount time 
