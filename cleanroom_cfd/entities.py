@@ -22,11 +22,19 @@ ENTITY_CATALOGE = {
         "blocks_airflow": False,
         "is_outlet": True,
         "is_active": True,
+        "drain_strength": 0.15, #amo fraction of air drained
     },
     "human": {
         "base_temperature": 37.0,
         "blocks_airflow": True,
         "heat_emission": True,
+    },
+    "furniture_passthrough": {
+    "blocks_airflow": False,
+    "friction": 0.3,        
+    "base_temperature": None,
+    "darcy_resistance": 10.0,
+    "is_active": True,
     },
 }
 
@@ -52,6 +60,7 @@ class Entity:
         self.vel_x, self.vel_y = config.get("velocity", (0.0, 0.0))
         self.is_outlet = config.get("is_outlet", False)
         self.darcy_resistance = config.get("darcy_resistance", 0.0)
+        self.drain_strength = config.get("drain_strength", 0.0)
 
     def get_mask(self, res, grid_h, grid_w):
         """Return the boolean mask of the entity in the grid"""
@@ -86,6 +95,14 @@ class Entity:
         if self.blocks_airflow:
             u[s_y, s_x] = 0.0
             v[s_y, s_x] = 0.0
+
+        # Outlet: gradual absorption of air (direction -y)
+        if self.is_outlet and self.drain_strength > 0.0:
+            # Reforce componenet v towards -y gradually
+            v[s_y, s_x] = (1.0 - self.drain_strength) * v[s_y, s_x] \
+                        + self.drain_strength * (-abs(v[s_y, s_x]) - 0.1)
+            # pressure 0 = open outlet
+            p[s_y, s_x] = 0.0
 
         if self.is_outlet:
             p[s_y, s_x] = 0.0

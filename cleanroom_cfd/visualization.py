@@ -19,7 +19,7 @@ def animate_simulation(
     step_fn, frames, substeps_per_frame,
     svg_width_m, svg_height_m,
     is_obstacle, y_sock_m, sock_thickness_m,
-    hs_x_m, hs_y_m, v_sock_target, T_supply, dt
+    hs_x_m, hs_y_m, v_sock_target, T_supply, dt, entities_list=None
 ):
     fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -59,6 +59,29 @@ def animate_simulation(
         linewidth=2
     )
     ax.add_patch(sock_patch)
+
+    # Outlets as circles on the wall
+    if entities_list is not None:
+        for ent in entities_list:
+            if ent.type == "pressure_outlet":
+                cx = ent.x + ent.width / 2
+                cy = ent.y + ent.height / 2
+                circle = plt.Circle(
+                    (cx, cy), 
+                    radius=0.18,
+                    facecolor='none',
+                    edgecolor='lime',
+                    linewidth=1.5,
+                    alpha=0.8,
+                    zorder=5
+                )
+                ax.add_patch(circle)
+                # Arrow pointing exit of air
+                ax.annotate('', 
+                    xy=(cx, cy - 0.25), xytext=(cx, cy),
+                    arrowprops=dict(arrowstyle='->', color='lime', lw=1.5),
+                    zorder=5
+                )
 
     ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
 
