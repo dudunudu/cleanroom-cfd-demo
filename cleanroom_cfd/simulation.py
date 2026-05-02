@@ -109,7 +109,16 @@ def cfd_step(
     # 10. Temperature transport
     T_next = advect_upwind(T, u_next, v_next, dt, dx)
     T_next[1:-1, 1:-1] += dt * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
-    T_next[is_obstacle] = T_ref
+
+    # Obstacles have conductivity
+    T_neighbors = (
+    np.roll(T_next, 1, axis=0) + np.roll(T_next, -1, axis=0) +
+    np.roll(T_next, 1, axis=1) + np.roll(T_next, -1, axis=1)) / 4.0
+
+    h_wall = 15 # conductivity coeffcient
+    T_next[is_obstacle] = T[is_obstacle] + dt * h_wall * (T_neighbors[is_obstacle] - T[is_obstacle])
+
+    # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
 
     # Entities force their temperature on the furniture points (Thermal: heat sources)
     for ent in entities_list:
