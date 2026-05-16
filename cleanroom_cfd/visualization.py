@@ -1,16 +1,10 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, RegularPolygon
 from IPython.display import HTML, display
-
-
-def tracer_display(a, threshold=0.005):
-    return np.ma.masked_where(a < threshold, a)
-
-
-def tracer_alpha(a, threshold=0.005):
-    return np.clip((a - threshold) * 1.6, 0.0, 0.90)
+import pandas as pd
 
 
 def animate_simulation(
@@ -19,10 +13,16 @@ def animate_simulation(
     step_fn, frames, substeps_per_frame,
     svg_width_m, svg_height_m,
     is_obstacle, y_sock_m, sock_thickness_m,
-    hs_x_m, hs_y_m, v_sock_target, T_supply, dt, entities_list=None
+    hs_x_m, hs_y_m, v_sock_target, T_supply, dt,
+    entities_list=None,
+    real_start_timestamp=None,
+    dynamic_entities_state=None,
+    save_gif_path=None,
+    gif_fps=8
 ):
     fig, ax = plt.subplots(figsize=(12, 8))
 
+    # Only show actual temperature
     temp_im = ax.imshow(
         thermal_grid,
         cmap='magma',
@@ -30,16 +30,6 @@ def animate_simulation(
         extent=[0, svg_width_m, 0, svg_height_m],
         vmin=8,
         vmax=80
-    )
-
-    smoke_im = ax.imshow(
-        tracer_display(sock_tracer),
-        cmap='Blues',
-        origin='lower',
-        extent=[0, svg_width_m, 0, svg_height_m],
-        vmin=0,
-        vmax=0.15,
-        alpha=tracer_alpha(sock_tracer)
     )
 
     ax.contour(
@@ -60,14 +50,15 @@ def animate_simulation(
     )
     ax.add_patch(sock_patch)
 
-    # Outlets as circles on the wall
+    # Draw persistent entities
     if entities_list is not None:
         for ent in entities_list:
+            # Outlets as circles
             if ent.type == "pressure_outlet":
                 cx = ent.x + ent.width / 2
                 cy = ent.y + ent.height / 2
                 circle = plt.Circle(
-                    (cx, cy), 
+                    (cx, cy),
                     radius=0.18,
                     facecolor='none',
                     edgecolor='lime',
@@ -76,12 +67,20 @@ def animate_simulation(
                     zorder=5
                 )
                 ax.add_patch(circle)
-                # Arrow pointing exit of air
-                ax.annotate('', 
-                    xy=(cx, cy - 0.25), xytext=(cx, cy),
-                    arrowprops=dict(arrowstyle='->', color='lime', lw=1.5),
-                    zorder=5
+
+            # Machine boxes
+            elif ent.type in {"heat_source_full", "heat_source_short"}:
+                machine_box = Rectangle(
+                    (ent.x, ent.y),
+                    ent.width,
+                    ent.height,
+                    facecolor='none',
+                    edgecolor='red',
+                    linewidth=2.0,
+                    alpha=0.9,
+                    zorder=6
                 )
+                ax.add_patch(machine_box)
 
     ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
 
@@ -105,16 +104,37 @@ def animate_simulation(
         "p": p,
     }
 
-    sub = 10  # Dibujar una flecha cada 10 celdas para no saturar
-    X, Y = np.meshgrid(
-    np.linspace(0, svg_width_m, state["u"].shape[1]),
-    np.linspace(0, svg_height_m, state["u"].shape[0])
-    )
-    q_v = ax.quiver(
-    X[::sub, ::sub], Y[::sub, ::sub], 
-    state["u"][::sub, ::sub], state["v"][::sub, ::sub],
-    color='white', alpha=0.6, scale=15
-    )
+    human_patches = []
+
+    def draw_humans():
+        nonlocal human_patches
+
+        for patch in human_patches:
+            patch.remove()
+        human_patches = []
+
+        if dynamic_entities_state is None:
+            return
+
+        current_humans = dynamic_entities_state.get("humans", [])
+
+        for ent in current_humans:
+            cx = ent.x + ent.width / 2
+            cy = ent.y + ent.height / 2
+
+            tri = RegularPolygon(
+                (cx, cy),
+                numVertices=3,
+                radius=0.22,
+                orientation=np.pi / 2,
+                facecolor='cyan',
+                edgecolor='black',
+                linewidth=1.5,
+                alpha=0.95,
+                zorder=9
+            )
+            ax.add_patch(tri)
+            human_patches.append(tri)
 
     def update(frame):
         for _ in range(substeps_per_frame):
@@ -123,24 +143,36 @@ def animate_simulation(
             )
 
         temp_im.set_data(state["T"])
-        smoke_im.set_data(tracer_display(state["tracer"]))
-        smoke_im.set_alpha(tracer_alpha(state["tracer"]))
+        draw_humans()
 
         sim_t = (frame + 1) * substeps_per_frame * dt
         max_v = np.max(np.sqrt(state["u"] * state["u"] + state["v"] * state["v"]))
 
-        ax.set_title('Temperature + air from air sock')
-        info_text.set_text(
-            f'Sim time: {sim_t:.2f} s\n'
-            f'Sock speed: {abs(v_sock_target):.2f} m/s\n'
-            f'Supply temp: {T_supply:.1f} °C\n'
-            f'Max air speed now: {max_v:.2f} m/s'
-        )
-        q_v.set_UVC(state["u"][::sub, ::sub], state["v"][::sub, ::sub])
+        lines = [f"Sim time: {sim_t:.2f} s"]
 
-        return temp_im, smoke_im, info_text
+        if real_start_timestamp is not None:
+            current_real_time = pd.Timestamp(real_start_timestamp) + pd.Timedelta(seconds=sim_t)
+            lines.append(f"Real date/time: {current_real_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        lines.extend([
+            f"Sock speed: {abs(v_sock_target):.2f} m/s",
+            f"Supply temp: {T_supply:.1f} °C",
+            f"Max air speed now: {max_v:.2f} m/s"
+        ])
+
+        ax.set_title('Temperature field')
+        info_text.set_text("\n".join(lines))
+
+        return [temp_im, info_text] + human_patches
 
     anim = FuncAnimation(fig, update, frames=frames, interval=120, blit=False)
+
+    if save_gif_path is not None:
+        save_dir = os.path.dirname(save_gif_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        anim.save(save_gif_path, writer="pillow", fps=gif_fps)
+
     plt.close(fig)
     display(HTML(anim.to_jshtml()))
     return anim

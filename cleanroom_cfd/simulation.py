@@ -7,7 +7,7 @@ def compute_time_step(dx, sock_speed, alpha_heat, nu_eff):
     dt_adv = dx / max(abs(sock_speed), 1e-12)
     dt_diff_T = dx**2 / (4 * alpha_heat)
     dt_diff_u = dx**2 / (4 * nu_eff)
-    return min(dt_adv, dt_diff_T, dt_diff_u) * 0.20
+    return min(dt_adv, dt_diff_T, dt_diff_u) * 0.30
 
 
 def cfd_step(
