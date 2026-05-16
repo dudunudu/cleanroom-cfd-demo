@@ -21,10 +21,10 @@ class SimulationConfig:
     supply_temp: float = 8.0
 
     # Physics
-    alpha_heat: float = 1.0e-2
-    nu_eff: float = 5.0e-3
+    alpha_heat: float = 1.0e-4
+    nu_eff: float = 5.0e-4
     rho: float = 1.0
-    beta_b: float = 0.0
+    beta_b: float = 3.3e-3
     g: float = 9.81
     T_ref: float = 20.0
 
