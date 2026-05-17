@@ -28,8 +28,8 @@ def animate_simulation(
         cmap='magma',
         origin='lower',
         extent=[0, svg_width_m, 0, svg_height_m],
-        vmin=8,
-        vmax=80
+        vmin=15,
+        vmax=35
     )
 
     ax.contour(
@@ -82,7 +82,7 @@ def animate_simulation(
                 )
                 ax.add_patch(machine_box)
 
-    ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
+    # ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
 
     plt.colorbar(temp_im, label='Temperature (°C)')
     ax.set_xlabel('X (meters)')

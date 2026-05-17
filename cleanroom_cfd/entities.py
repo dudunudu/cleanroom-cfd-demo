@@ -13,7 +13,7 @@ ENTITY_CATALOGE = {
         "is_active": True,
     },
     "air_conditioning": {
-        "base_temperature": -15.0,
+        "base_temperature": 18.0,
         "velocity": (0.0, -1.5),
         "is_active": True,
         "blocks_airflow": False,
@@ -22,7 +22,7 @@ ENTITY_CATALOGE = {
         "blocks_airflow": False,
         "is_outlet": True,
         "is_active": True,
-        "drain_strength": 0.15, #amo fraction of air drained
+        "drain_strength": 0.01, #amo fraction of air drained
     },
     "human": {
         "base_temperature": 37.0,
@@ -114,6 +114,3 @@ class Entity:
         # Max T and amount time 
         return self.temp_target if self.is_active else None
     
-    # Goals each person should reach end project
-    # heating and cooling implementation
-    # Edit so the implementation is easier with the excel documentation

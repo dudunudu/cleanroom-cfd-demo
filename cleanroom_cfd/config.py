@@ -17,8 +17,8 @@ class SimulationConfig:
     # Sock setup
     y_sock_m: float = 8.0
     sock_thickness_m: float = 0.5
-    sock_speed: float = 1.20
-    supply_temp: float = 8.0
+    sock_speed: float = 0.45
+    supply_temp: float = 18.0
 
     # Physics
     alpha_heat: float = 1.0e-2
@@ -29,7 +29,7 @@ class SimulationConfig:
     T_ref: float = 20.0
 
     # Numerics
-    pressure_iters: int = 10
+    pressure_iters: int = 30
     max_speed: float = 1.5
     smoke_diff: float = 8.0e-4
     source_half_thickness_cells: int = 2
@@ -40,5 +40,5 @@ class SimulationConfig:
     warmup_steps: int = 3000
 
     # Plotting
-    temp_vmin: float = 8.0
-    temp_vmax: float = 80.0
+    temp_vmin: float = 15.0
+    temp_vmax: float = 45.0

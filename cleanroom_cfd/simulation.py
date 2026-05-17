@@ -106,7 +106,7 @@ def cfd_step(
     np.roll(T_next, 1, axis=0) + np.roll(T_next, -1, axis=0) +
     np.roll(T_next, 1, axis=1) + np.roll(T_next, -1, axis=1)) / 4.0
 
-    h_wall = 15 # conductivity coeffcient
+    h_wall = 2.0 # conductivity coeffcient
     T_next[is_obstacle] = T[is_obstacle] + dt * h_wall * (T_neighbors[is_obstacle] - T[is_obstacle])
 
     # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
@@ -119,7 +119,8 @@ def cfd_step(
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
-        ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=15.0)
+        h_conv = 5.0
+        ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=h_conv)
 
     T_next = apply_scalar_bc(T_next)
 
