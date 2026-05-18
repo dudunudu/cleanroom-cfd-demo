@@ -8,8 +8,8 @@ ENTITY_CATALOGE = {
     "heat_source_short": {
         "base_temperature": 45.0,
         "blocks_airflow": False,
-        "friction": 0.5,
-        "darcy_resistance": 30.0,
+        "friction": 0.7,
+        "darcy_resistance": 33.0,
         "is_active": True,
     },
     "air_conditioning": {
@@ -31,9 +31,9 @@ ENTITY_CATALOGE = {
     },
     "furniture_passthrough": {
     "blocks_airflow": False,
-    "friction": 0.3,        
+    "friction": 0.7,        
     "base_temperature": None,
-    "darcy_resistance": 10.0,
+    "darcy_resistance": 20.0, # less dense than machines
     "is_active": True,
     },
 }
