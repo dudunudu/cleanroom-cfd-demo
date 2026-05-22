@@ -29,7 +29,7 @@ def cfd_step(
 
     p_next = p.copy()
     v_sock_target = -abs(sock_speed)
-    inject_strength = 0.55
+    inject_strength = 0.1
 
     # 1. Dynamic flow_obstacle (SVG + Entity)
     flow_obstacle = is_obstacle.copy()
@@ -99,7 +99,13 @@ def cfd_step(
 
     # 10. Temperature transport
     T_next = advect_upwind(T, u_next, v_next, dt, dx)
-    T_next[1:-1, 1:-1] += dt * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
+
+    # Subcycle: N small steps for diffusion
+    N_thermal = 10  # subcycles number
+    dt_T = dt / N_thermal  # smaller dt
+
+    for _ in range(N_thermal):
+        T_next[1:-1, 1:-1] += dt_T * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
 
     # Obstacles have conductivity
     T_neighbors = (
@@ -122,6 +128,10 @@ def cfd_step(
     for ent in entities_list:
         h_conv = 1.5
         ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=h_conv)
+
+    # Global disipation to T_ref
+    tau_cooling = 300.0 # time of cooling -> 5 mins to go back
+    T_next[~is_obstacle] += dt * (1.0/tau_cooling) * (supply_temp - T_next[~is_obstacle])
 
     T_next = apply_scalar_bc(T_next)
 

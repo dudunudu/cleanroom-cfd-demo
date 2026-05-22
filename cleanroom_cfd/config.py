@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class SimulationConfig:
     # Grid / geometry
-    res: int = 20  # cells per meter
+    res: int = 10  # cells per meter
 
     # Thermal setup
     room_temp: float = 20.0
@@ -21,16 +21,16 @@ class SimulationConfig:
     supply_temp: float = 18.0
 
     # Physics
-    alpha_heat: float = 5.0e-3
-    nu_eff: float = 4.0e-3
+    alpha_heat: float = 2.2e-5
+    nu_eff: float = 1.5e-3
     rho: float = 1.205 
-    beta_b: float = 3.3e-3 
+    beta_b: float = 0.0
     g: float = 9.81
     T_ref: float = 20.0
 
     # Numerics
     pressure_iters: int = 30
-    max_speed: float = 1.5
+    max_speed: float = 0.6
     smoke_diff: float = 8.0e-4
     source_half_thickness_cells: int = 2
 

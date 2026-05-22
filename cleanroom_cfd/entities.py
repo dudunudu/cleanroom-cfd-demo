@@ -22,7 +22,7 @@ ENTITY_CATALOGE = {
         "blocks_airflow": False,
         "is_outlet": True,
         "is_active": True,
-        "drain_strength": 0.01, #amo fraction of air drained
+        "drain_strength": 0.03, #amo fraction of air drained
     },
     "human": {
         "base_temperature": 37.0,
