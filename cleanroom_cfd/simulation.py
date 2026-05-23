@@ -29,7 +29,7 @@ def cfd_step(
 
     p_next = p.copy()
     v_sock_target = -abs(sock_speed)
-    inject_strength = 0.1
+    inject_strength = 0.0
 
     # 1. Dynamic flow_obstacle (SVG + Entity)
     flow_obstacle = is_obstacle.copy()
@@ -49,8 +49,8 @@ def cfd_step(
     v_star = advect_upwind(v, u, v, dt, dx)
 
     # 3. Sock injection
-    v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
-    u_star[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
+    # v_star[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_star[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
+    # u_star[src_y0:src_y1, 1:-1] *= (1.0 - inject_strength)
 
     # 4. Gravity and buoyancy (Boussinesq approximation)
     if beta_b != 0.0:
@@ -86,7 +86,7 @@ def cfd_step(
     )
 
     # 9. Sock, again (3rd time) after pressure projection to maintain constant flow
-    v_next[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_next[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
+    # v_next[src_y0:src_y1, 1:-1] = (1.0 - inject_strength) * v_next[src_y0:src_y1, 1:-1] + inject_strength * v_sock_target
 
     # Clamp speed
     speed = np.sqrt(u_next**2 + v_next**2)
@@ -119,10 +119,8 @@ def cfd_step(
     # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
 
     # Sock temperature 
-    T_next[src_y0:src_y1, 1:-1] = (
-        (1.0 - inject_strength) * T_next[src_y0:src_y1, 1:-1] 
-        + inject_strength * supply_temp
-    )
+    tau_sock = 120.0  # secs
+    T_next[~is_obstacle] += dt * (1.0 / tau_sock) * (supply_temp - T_next[~is_obstacle])
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
