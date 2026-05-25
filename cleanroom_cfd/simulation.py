@@ -116,11 +116,19 @@ def cfd_step(
     T_cool = 0.005
     T_next[is_obstacle] = (T[is_obstacle] + dt * h_wall * (T_neighbors[is_obstacle] - T[is_obstacle])) - dt * T_cool * (T[is_obstacle] - T_ref) 
 
-    # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
+    # Sock temperature disipating
+    # Normalize disatance to sock
+    y_coords = np.linspace(0, 1, T_next.shape[0])[:, np.newaxis]  # shape (grid_h, 1)
+    sock_row = (src_y0 + src_y1) / 2  / T_next.shape[0]
 
-    # Sock temperature 
-    tau_sock = 60.0  # time renovating the air
-    T_next[~is_obstacle] += dt * (1.0 / tau_sock) * (supply_temp - T_next[~is_obstacle])
+    dist_from_sock = np.abs(y_coords - sock_row)
+    dist_from_sock = dist_from_sock / dist_from_sock.max()
+
+    tau_min = 30.0   # time renovating air, close to the sock
+    tau_max = 180.0  # time renovating air, far from the sock
+    tau_field = tau_min + dist_from_sock * (tau_max - tau_min)
+
+    T_next[~is_obstacle] += (dt / tau_field[~is_obstacle]) * (supply_temp - T_next[~is_obstacle])
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
