@@ -22,7 +22,7 @@ class SimulationConfig:
 
     # Physics
     alpha_heat: float = 2.2e-5
-    nu_eff: float = 1.5e-4
+    nu_eff: float = 1.5e-5
     rho: float = 1.205 
     beta_b: float = 0.0
     g: float = 9.81

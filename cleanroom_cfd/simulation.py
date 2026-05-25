@@ -119,12 +119,12 @@ def cfd_step(
     # T_next[is_obstacle] = T_ref # obstacles constant temperature (alternative)
 
     # Sock temperature 
-    tau_sock = 120.0  # secs
+    tau_sock = 60.0  # time renovating the air
     T_next[~is_obstacle] += dt * (1.0 / tau_sock) * (supply_temp - T_next[~is_obstacle])
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
-        h_conv = 1.5
+        h_conv = 3.0
         ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=h_conv)
 
     # Global disipation to T_ref
