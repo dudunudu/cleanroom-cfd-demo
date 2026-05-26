@@ -18,7 +18,7 @@ class SimulationConfig:
     y_sock_m: float = 8.0
     sock_thickness_m: float = 0.5
     sock_speed: float = 0.45
-    supply_temp: float = 18.0
+    supply_temp: float = 20.0
 
     # Physics
     alpha_heat: float = 2.2e-5
@@ -41,4 +41,4 @@ class SimulationConfig:
 
     # Plotting
     temp_vmin: float = 15.0
-    temp_vmax: float = 45.0
+    temp_vmax: float = 35.0

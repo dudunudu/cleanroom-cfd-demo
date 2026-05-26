@@ -10,6 +10,36 @@ def compute_time_step(dx, sock_speed, alpha_heat, nu_eff):
     return min(dt_adv, dt_diff_T, dt_diff_u) * 0.30
 
 
+def compute_tau_field(T_shape, src_y0, src_y1, is_obstacle, entities_list, res,
+                      tau_min=30.0, tau_max=180.0):
+    cost_pass = np.ones(T_shape, dtype=float)
+    cost_pass[is_obstacle] = np.inf
+
+    for ent in entities_list:
+        s_y, s_x = ent.get_mask(res, T_shape[0], T_shape[1])
+        if ent.blocks_airflow:
+            cost_pass[s_y, s_x] = np.inf
+        elif ent.friction > 0.0:
+            cost_pass[s_y, s_x] = 1.0 + ent.friction
+
+    dist_map = np.full(T_shape, np.inf)
+    dist_map[src_y0:src_y1, 1:-1] = 0.0
+
+    n_iters = max(T_shape) * 2
+    for _ in range(n_iters):
+        prev = dist_map.copy()
+        dist_map[1:, :]  = np.minimum(dist_map[1:, :],  prev[:-1, :] + cost_pass[1:, :])
+        dist_map[:-1, :] = np.minimum(dist_map[:-1, :], prev[1:, :]  + cost_pass[:-1, :])
+        dist_map[:, 1:]  = np.minimum(dist_map[:, 1:],  prev[:, :-1] + cost_pass[:, 1:])
+        dist_map[:, :-1] = np.minimum(dist_map[:, :-1], prev[:, 1:]  + cost_pass[:, :-1])
+
+    max_dist = dist_map[dist_map != np.inf].max() if np.any(dist_map != np.inf) else 1.0
+    dist_map[dist_map == np.inf] = max_dist
+    dist_norm = (dist_map / max_dist)**2
+
+    return tau_min + dist_norm * (tau_max - tau_min)
+
+
 def cfd_step(
     T, sock_tracer, u, v, p, *,
     dx, dt, entities_list, res, is_obstacle,
@@ -17,7 +47,8 @@ def cfd_step(
     hs_x, hs_y, bubble_r,
     alpha_heat, nu_eff, rho, beta_b, g, T_ref,
     sock_speed, supply_temp, smoke_diff,
-    pressure_iters, max_speed
+    pressure_iters, max_speed,
+    tau_field=None
 ):
     """
     CFD step
@@ -28,8 +59,6 @@ def cfd_step(
     """
 
     p_next = p.copy()
-    v_sock_target = -abs(sock_speed)
-    inject_strength = 0.0
 
     # 1. Dynamic flow_obstacle (SVG + Entity)
     flow_obstacle = is_obstacle.copy()
@@ -116,17 +145,9 @@ def cfd_step(
     T_cool = 0.005
     T_next[is_obstacle] = (T[is_obstacle] + dt * h_wall * (T_neighbors[is_obstacle] - T[is_obstacle])) - dt * T_cool * (T[is_obstacle] - T_ref) 
 
-    # Sock temperature disipating
-    # Normalize disatance to sock
-    y_coords = np.linspace(0, 1, T_next.shape[0])[:, np.newaxis]  # shape (grid_h, 1)
-    sock_row = (src_y0 + src_y1) / 2  / T_next.shape[0]
-
-    dist_from_sock = np.abs(y_coords - sock_row)
-    dist_from_sock = dist_from_sock / dist_from_sock.max()
-
-    tau_min = 30.0   # time renovating air, close to the sock
-    tau_max = 180.0  # time renovating air, far from the sock
-    tau_field = tau_min + dist_from_sock * (tau_max - tau_min)
+    # Cooling from the sock as a precomputed field
+    if tau_field is None:
+        tau_field = compute_tau_field(T_next.shape, src_y0, src_y1, is_obstacle, entities_list, res)
 
     T_next[~is_obstacle] += (dt / tau_field[~is_obstacle]) * (supply_temp - T_next[~is_obstacle])
 
@@ -134,10 +155,6 @@ def cfd_step(
     for ent in entities_list:
         h_conv = 3.0
         ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=h_conv)
-
-    # Global disipation to T_ref
-    tau_cooling = 300.0 # time of cooling -> 5 mins to go back
-    T_next[~is_obstacle] += dt * (1.0/tau_cooling) * (supply_temp - T_next[~is_obstacle])
 
     T_next = apply_scalar_bc(T_next)
 
