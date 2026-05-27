@@ -68,20 +68,6 @@ def animate_simulation(
                 )
                 ax.add_patch(circle)
 
-            # Machine boxes
-            elif ent.type in {"heat_source_full", "heat_source_short"}:
-                machine_box = Rectangle(
-                    (ent.x, ent.y),
-                    ent.width,
-                    ent.height,
-                    facecolor='none',
-                    edgecolor='red',
-                    linewidth=2.0,
-                    alpha=0.9,
-                    zorder=6
-                )
-                ax.add_patch(machine_box)
-
     # ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
 
     plt.colorbar(temp_im, label='Temperature (°C)')

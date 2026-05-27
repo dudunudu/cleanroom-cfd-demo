@@ -19,22 +19,27 @@ def _entity_box_mask(ent, res, grid_h, grid_w):
     return mask
 
 
-def _entity_surround_mask(ent, res, grid_h, grid_w, pad_cells=3):
-    mask = np.zeros((grid_h, grid_w), dtype=bool)
-
-    x0, x1, y0, y1 = _entity_bounds(ent, res, grid_h, grid_w)
-
-    ox0 = max(0, x0 - pad_cells)
-    ox1 = min(grid_w, x1 + pad_cells)
-    oy0 = max(0, y0 - pad_cells)
-    oy1 = min(grid_h, y1 + pad_cells)
-
-    mask[oy0:oy1, ox0:ox1] = True
-    mask[y0:y1, x0:x1] = False
-    return mask
+def _entity_circle_mask(ent, res, grid_h, grid_w, radius_m):
+    yy, xx = np.indices((grid_h, grid_w))
+    cx = (ent.x + 0.5 * ent.width) * res
+    cy = (ent.y + 0.5 * ent.height) * res
+    r = radius_m * res
+    return (xx - cx) ** 2 + (yy - cy) ** 2 <= r ** 2
 
 
-def compute_metrics(T, u, v, is_obstacle, machine_entities, res, pad_cells=3):
+def _entity_surround_circle_mask(ent, res, grid_h, grid_w, inner_radius_m, outer_radius_m):
+    outer = _entity_circle_mask(ent, res, grid_h, grid_w, outer_radius_m)
+    inner = _entity_circle_mask(ent, res, grid_h, grid_w, inner_radius_m)
+    return outer & (~inner)
+
+
+def compute_metrics(
+    T, u, v, is_obstacle, machine_entities, res,
+    surround_pad_cells=3,
+    use_circular_machine_metrics=True,
+    default_machine_radius_m=0.30,
+    surround_outer_radius_m=0.60
+):
     air_mask = ~is_obstacle
     speed = np.sqrt(u * u + v * v)
 
@@ -53,8 +58,27 @@ def compute_metrics(T, u, v, is_obstacle, machine_entities, res, pad_cells=3):
     grid_h, grid_w = T.shape
 
     for ent in machine_entities:
-        box_mask = _entity_box_mask(ent, res, grid_h, grid_w) & air_mask
-        surround_mask = _entity_surround_mask(ent, res, grid_h, grid_w, pad_cells=pad_cells) & air_mask
+        if use_circular_machine_metrics:
+            inner_radius_m = ent.thermal_radius_m if ent.thermal_radius_m is not None else default_machine_radius_m
+            box_mask = _entity_circle_mask(ent, res, grid_h, grid_w, inner_radius_m) & air_mask
+            surround_mask = _entity_surround_circle_mask(
+                ent, res, grid_h, grid_w,
+                inner_radius_m=inner_radius_m,
+                outer_radius_m=surround_outer_radius_m
+            ) & air_mask
+        else:
+            box_mask = _entity_box_mask(ent, res, grid_h, grid_w) & air_mask
+
+            # fallback old-style rectangular surround
+            x0, x1, y0, y1 = _entity_bounds(ent, res, grid_h, grid_w)
+            surround_mask = np.zeros((grid_h, grid_w), dtype=bool)
+            ox0 = max(0, x0 - surround_pad_cells)
+            ox1 = min(grid_w, x1 + surround_pad_cells)
+            oy0 = max(0, y0 - surround_pad_cells)
+            oy1 = min(grid_h, y1 + surround_pad_cells)
+            surround_mask[oy0:oy1, ox0:ox1] = True
+            surround_mask[y0:y1, x0:x1] = False
+            surround_mask &= air_mask
 
         if np.any(box_mask):
             metrics[f"machine_{ent.id_name}_box_temp"] = float(np.mean(T[box_mask]))
@@ -80,7 +104,10 @@ def run_simulation_and_collect(
     machine_entities,
     res,
     real_start_timestamp=None,
-    pad_cells=3
+    surround_pad_cells=3,
+    use_circular_machine_metrics=True,
+    default_machine_radius_m=0.30,
+    surround_outer_radius_m=0.60
 ):
     state = {
         "T": thermal_grid.copy(),
@@ -107,7 +134,10 @@ def run_simulation_and_collect(
             is_obstacle,
             machine_entities,
             res,
-            pad_cells=pad_cells
+            surround_pad_cells=surround_pad_cells,
+            use_circular_machine_metrics=use_circular_machine_metrics,
+            default_machine_radius_m=default_machine_radius_m,
+            surround_outer_radius_m=surround_outer_radius_m
         )
 
         metrics["frame"] = frame + 1
@@ -133,7 +163,6 @@ def save_metric_plots(df_metrics, results_dir):
 
     x = df_metrics["sim_time_min"]
 
-    # Plot 1: room temperature metrics
     plt.figure(figsize=(10, 6))
     plt.plot(x, df_metrics["room_avg_temp"], label="Room avg temp")
     plt.plot(x, df_metrics["room_max_temp"], label="Room max temp")
@@ -147,7 +176,6 @@ def save_metric_plots(df_metrics, results_dir):
     plt.savefig(os.path.join(results_dir, "room_temperature_metrics.png"), dpi=150)
     plt.close()
 
-    # Plot 2: room variability + speed
     plt.figure(figsize=(10, 6))
     plt.plot(x, df_metrics["room_std_temp"], label="Room temp std")
     plt.plot(x, df_metrics["room_avg_speed"], label="Room avg speed")
@@ -160,7 +188,6 @@ def save_metric_plots(df_metrics, results_dir):
     plt.savefig(os.path.join(results_dir, "room_variability_and_speed.png"), dpi=150)
     plt.close()
 
-    # Plot 3: machine surrounding temperature
     surround_cols = [c for c in df_metrics.columns if c.endswith("_surround_temp")]
     if surround_cols:
         plt.figure(figsize=(12, 7))
@@ -175,7 +202,6 @@ def save_metric_plots(df_metrics, results_dir):
         plt.savefig(os.path.join(results_dir, "machine_surround_temperatures.png"), dpi=150)
         plt.close()
 
-    # Plot 4: machine box temperature
     box_cols = [c for c in df_metrics.columns if c.endswith("_box_temp")]
     if box_cols:
         plt.figure(figsize=(12, 7))
@@ -183,7 +209,7 @@ def save_metric_plots(df_metrics, results_dir):
             plt.plot(x, df_metrics[col], label=col)
         plt.xlabel("Simulation time (minutes)")
         plt.ylabel("Temperature (°C)")
-        plt.title("Machine box temperatures over time")
+        plt.title("Machine hotspot temperatures over time")
         plt.legend(fontsize=8, ncol=2)
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
