@@ -7,7 +7,7 @@ class SimulationConfig:
     res: int = 10  # cells per meter
 
     # Thermal setup
-    room_temp: float = 20.0
+    room_temp: float = 20.8
     obstacle_temp: float = 18.0
     hotspot_temp: float = 80.0
     hotspot_x_m: float = 1.5
@@ -18,7 +18,7 @@ class SimulationConfig:
     y_sock_m: float = 8.0
     sock_thickness_m: float = 0.5
     sock_speed: float = 0.45
-    supply_temp: float = 20.0
+    supply_temp: float = 19.0
 
     # Physics
     alpha_heat: float = 2.2e-5
@@ -26,7 +26,7 @@ class SimulationConfig:
     rho: float = 1.205 
     beta_b: float = 0.0
     g: float = 9.81
-    T_ref: float = 20.0
+    T_ref: float = 20.8
 
     # Numerics
     pressure_iters: int = 30

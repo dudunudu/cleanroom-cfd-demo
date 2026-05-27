@@ -35,7 +35,7 @@ def compute_tau_field(T_shape, src_y0, src_y1, is_obstacle, entities_list, res,
 
     max_dist = dist_map[dist_map != np.inf].max() if np.any(dist_map != np.inf) else 1.0
     dist_map[dist_map == np.inf] = max_dist
-    dist_norm = (dist_map / max_dist)**2
+    dist_norm = (dist_map / max_dist)
 
     return tau_min + dist_norm * (tau_max - tau_min)
 
@@ -107,7 +107,6 @@ def cfd_step(
             darcy_mask[s_y, s_x] = True
             darcy_coeff_grid[s_y, s_x] = ent.friction * ent.darcy_resistance
 
-    # 8. Pressure projection con Darcy integrado
     u_next, v_next, p_next = project_incompressible(
         u_next, v_next, p_next, dx, dt, rho, pressure_iters, flow_obstacle,
         darcy_mask=darcy_mask,
@@ -137,14 +136,26 @@ def cfd_step(
         T_next[1:-1, 1:-1] += dt_T * alpha_heat * laplacian(T_next, dx)[1:-1, 1:-1]
 
     # Obstacles have conductivity
-    T_neighbors = (
-    np.roll(T_next, 1, axis=0) + np.roll(T_next, -1, axis=0) +
-    np.roll(T_next, 1, axis=1) + np.roll(T_next, -1, axis=1)) / 4.0
+    h_conv_phys = 10.0
+    lambda_conv =  h_conv_phys / (dx * rho * 1005) # cooling rate
 
-    h_wall = 0.5 # conductivity coeffcient
-    T_cool = 0.005
-    T_next[is_obstacle] = (T[is_obstacle] + dt * h_wall * (T_neighbors[is_obstacle] - T[is_obstacle])) - dt * T_cool * (T[is_obstacle] - T_ref) 
+    T_neighbors = np.zeros_like(T_next)
+    T_neighbors[1:-1, 1:-1] = (
+    T_next[:-2, 1:-1] + T_next[2:, 1:-1] +
+    T_next[1:-1, :-2] + T_next[1:-1, 2:]) / 4.0
 
+    # mask active entities: have temperature
+    active_thermal_mask = np.zeros(T.shape, dtype=bool)
+    for ent in entities_list:
+        if ent.is_active and ent.temp_target is not None:
+            s_y, s_x = ent.get_mask(res, T.shape[0], T.shape[1])
+            active_thermal_mask[s_y, s_x] = True
+
+    # Pasive objects: walls, furnitures
+    passive_obstacle = is_obstacle & ~active_thermal_mask
+    h_wall = 0.5  # restriction dt·h_wall <1
+    T_next[passive_obstacle] += dt * (h_wall + lambda_conv) * (T_neighbors[passive_obstacle] - T_next[passive_obstacle])
+    
     # Cooling from the sock as a precomputed field
     if tau_field is None:
         tau_field = compute_tau_field(T_next.shape, src_y0, src_y1, is_obstacle, entities_list, res)
@@ -153,9 +164,11 @@ def cfd_step(
 
     # Apply entities (Thermal: heat sources)
     for ent in entities_list:
-        h_conv = 3.0
-        ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1], h_conv=h_conv)
+        ent.apply_thermal(T_next, dt, res, T.shape[0], T.shape[1])
 
+    # Cooling of hotspots
+    T_next[active_thermal_mask] -= dt * lambda_conv *(T_next[active_thermal_mask] - T_neighbors[active_thermal_mask])
+    
     T_next = apply_scalar_bc(T_next)
 
     # 11. Air trace (smoke)

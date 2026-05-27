@@ -127,12 +127,12 @@ class Entity:
         if self.is_outlet:
             p[s_y, s_x] = 0.0
 
-    def apply_thermal(self, T, dt, res, grid_h, grid_w, h_conv=15.0):
+    def apply_thermal(self, T, dt, res, grid_h, grid_w):
         if not self.is_active or self.temp_target is None:
             return
-
         thermal_mask = self.get_thermal_mask(res, grid_h, grid_w)
-        T[thermal_mask] += dt * h_conv * (self.temp_target - T[thermal_mask])
+        T[thermal_mask] = self.temp_target
+        T[thermal_mask] = np.maximum(T[thermal_mask], self.temp_target) # only if the temperature is belove the given
 
     def get_current_temp(self):
         return self.temp_target if self.is_active else None
