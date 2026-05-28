@@ -18,7 +18,8 @@ def animate_simulation(
     real_start_timestamp=None,
     dynamic_entities_state=None,
     save_gif_path=None,
-    gif_fps=8
+    gif_fps=8,
+    show_inline=False
 ):
     fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -159,6 +160,8 @@ def animate_simulation(
             os.makedirs(save_dir, exist_ok=True)
         anim.save(save_gif_path, writer="pillow", fps=gif_fps)
 
+    if show_inline:
+        display(HTML(anim.to_jshtml()))
+
     plt.close(fig)
-    display(HTML(anim.to_jshtml()))
     return anim
