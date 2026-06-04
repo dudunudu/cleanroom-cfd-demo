@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.ndimage import binary_dilation
 
 
 def _entity_bounds(ent, res, grid_h, grid_w):
@@ -185,6 +186,31 @@ def build_base_ambient_mask(
 
     return ambient_mask
 
+def build_wall_adjacent_mask(is_obstacle, furniture_entities, persistent_hot_entities, res, layers=1):
+    """
+    Celdas de aire directamente adyacentes a paredes/obstáculos.
+    Aproxima temperatura superficial — comparable con background IR bbox.
+    """
+    grid_h, grid_w = is_obstacle.shape
+    
+    # Adjacent structural walls
+    dilated_walls = binary_dilation(is_obstacle, iterations=layers)
+    wall_surface = dilated_walls & (~is_obstacle)
+    
+    # Furniture entities
+    furniture_solid = np.zeros((grid_h, grid_w), dtype=bool)
+    for ent in furniture_entities:
+        furniture_solid |= _entity_box_mask(ent, res, grid_h, grid_w)
+    furniture_surface = binary_dilation(furniture_solid, iterations=layers) & (~furniture_solid) & (~is_obstacle)
+    
+    combined = wall_surface | furniture_surface
+    
+    # 4. Exclude hotspots with their radius
+    for ent in persistent_hot_entities:
+        exclusion_r = ent.thermal_radius_m if ent.thermal_radius_m is not None else 0.60
+        combined &= ~_entity_circle_mask(ent, res, grid_h, grid_w, exclusion_r)
+    
+    return combined
 
 def apply_dynamic_human_exclusion(
     base_ambient_mask,
@@ -208,24 +234,33 @@ def apply_dynamic_human_exclusion(
     return ambient_mask
 
 
-def compute_ambient_metrics(T, ambient_mask):
-    """
-    Compute mean / median ambient temperature over currently valid ambient cells.
-    """
+def compute_ambient_metrics(T, ambient_mask, wall_adjacent_mask=None):
     vals = T[ambient_mask]
 
     if vals.size == 0:
-        return {
+        result = {
             "sim_ambient_mean": np.nan,
             "sim_ambient_median": np.nan,
             "ambient_cell_count": 0,
         }
+    else:
+        result = {
+            "sim_ambient_mean": float(np.mean(vals)),
+            "sim_ambient_median": float(np.median(vals)),
+            "ambient_cell_count": int(vals.size),
+        }
 
-    return {
-        "sim_ambient_mean": float(np.mean(vals)),
-        "sim_ambient_median": float(np.median(vals)),
-        "ambient_cell_count": int(vals.size),
-    }
+    # Nueva métrica: temperatura superficial de paredes
+    if wall_adjacent_mask is not None:
+        wall_vals = T[wall_adjacent_mask]
+        if wall_vals.size > 0:
+            result["sim_wall_temp_mean"]   = float(np.mean(wall_vals))
+            result["sim_wall_temp_median"] = float(np.median(wall_vals))
+        else:
+            result["sim_wall_temp_mean"]   = np.nan
+            result["sim_wall_temp_median"] = np.nan
+
+    return result
 
 
 def run_simulation_and_collect_all(
@@ -251,6 +286,7 @@ def run_simulation_and_collect_all(
     surround_outer_radius_m=0.60,
     exclude_region_above_sock=True,
     fixed_ambient_top_cutoff_m=None,
+    wall_adjacent_mask=None,
 ):
     state = {
         "T": thermal_grid.copy(),
@@ -275,6 +311,7 @@ def run_simulation_and_collect_all(
         machine_exclusion_radius_m=machine_exclusion_radius_m,
         exclude_above_y_m=exclude_above_y_m,
     )
+
 
     for frame in range(frames):
         for _ in range(substeps_per_frame):
@@ -305,12 +342,14 @@ def run_simulation_and_collect_all(
             human_exclusion_radius_m=human_exclusion_radius_m,
         )
 
-        ambient_metrics = compute_ambient_metrics(state["T"], ambient_mask)
+        ambient_metrics = compute_ambient_metrics(state["T"], ambient_mask, wall_adjacent_mask=wall_adjacent_mask)
 
         metrics["sim_ambient_mean"] = ambient_metrics["sim_ambient_mean"]
         metrics["sim_ambient_median"] = ambient_metrics["sim_ambient_median"]
         metrics["ambient_cell_count"] = ambient_metrics["ambient_cell_count"]
         metrics["human_count"] = len(current_humans)
+        metrics["sim_wall_temp_mean"]   = ambient_metrics.get("sim_wall_temp_mean", np.nan)
+        metrics["sim_wall_temp_median"] = ambient_metrics.get("sim_wall_temp_median", np.nan)
 
         metrics["frame"] = frame + 1
         metrics["sim_time_s"] = sim_t

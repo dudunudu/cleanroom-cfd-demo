@@ -211,6 +211,7 @@ def update_machine_entities_for_time(
         if machine_id in temp_map:
             ent.is_active = True
             ent.temp_target = temp_map[machine_id]
+            ent.temperature = temp_map[machine_id] 
             ent.last_seen_ts = ts_to_use
         else:
             if not hasattr(ent, "last_seen_ts"):

@@ -139,7 +139,7 @@ class Entity:
             return
         thermal_mask = self.get_thermal_mask(res, grid_h, grid_w)
         T[thermal_mask] = self.temp_target
-        T[thermal_mask] = np.maximum(T[thermal_mask], self.temp_target) # only if the temperature is belove the given
+        #T[thermal_mask] = np.maximum(T[thermal_mask], self.temp_target) # only if the temperature is belove the given
 
     def get_current_temp(self):
         return self.temp_target if self.is_active else None
