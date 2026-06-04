@@ -133,8 +133,6 @@ def animate_simulation(
         draw_humans()
 
         sim_t = (frame + 1) * substeps_per_frame * dt
-        max_v = np.max(np.sqrt(state["u"] * state["u"] + state["v"] * state["v"]))
-
         lines = [f"Sim time: {sim_t:.2f} s"]
 
         if real_start_timestamp is not None:
@@ -144,7 +142,6 @@ def animate_simulation(
         lines.extend([
             f"Sock speed: {abs(v_sock_target):.2f} m/s",
             f"Supply temp: {T_supply:.1f} °C",
-            f"Max air speed now: {max_v:.2f} m/s"
         ])
 
         ax.set_title('Temperature field')
