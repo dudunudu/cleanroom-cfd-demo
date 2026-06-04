@@ -250,6 +250,7 @@ def run_simulation_and_collect_all(
     default_machine_radius_m=0.30,
     surround_outer_radius_m=0.60,
     exclude_region_above_sock=True,
+    fixed_ambient_top_cutoff_m=None,
 ):
     state = {
         "T": thermal_grid.copy(),
@@ -262,7 +263,9 @@ def run_simulation_and_collect_all(
     records = []
 
     exclude_above_y_m = None
-    if exclude_region_above_sock:
+    if fixed_ambient_top_cutoff_m is not None:
+        exclude_above_y_m = fixed_ambient_top_cutoff_m
+    elif exclude_region_above_sock:
         exclude_above_y_m = cfg.y_sock_m + cfg.sock_thickness_m
 
     base_ambient_mask = build_base_ambient_mask(
