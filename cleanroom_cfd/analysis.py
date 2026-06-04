@@ -217,3 +217,139 @@ def save_metric_plots(df_metrics, results_dir):
         plt.close()
 
     return csv_path
+
+def build_dynamic_ambient_mask(
+    room,
+    cfg,
+    persistent_hot_entities,
+    human_entities,
+    default_hot_exclusion_radius_m=0.60,
+    human_exclusion_radius_m=0.30,
+):
+    ambient_mask = ~room["is_obstacle"].copy()
+
+    grid_h, grid_w = room["grid_h"], room["grid_w"]
+    yy, xx = np.indices((grid_h, grid_w))
+
+    # Remove hot-entity influence regions (machines + screens)
+    for ent in persistent_hot_entities:
+        cx_m = ent.x + ent.width / 2
+        cy_m = ent.y + ent.height / 2
+
+        cx = cx_m * cfg.res
+        cy = cy_m * cfg.res
+
+        if getattr(ent, "thermal_radius_m", None) is not None:
+            exclusion_radius_m = max(default_hot_exclusion_radius_m, ent.thermal_radius_m * 2.0)
+        else:
+            exclusion_radius_m = default_hot_exclusion_radius_m
+
+        r = exclusion_radius_m * cfg.res
+
+        exclusion_circle = (xx - cx) ** 2 + (yy - cy) ** 2 <= r ** 2
+        ambient_mask[exclusion_circle] = False
+
+    # Remove human influence regions
+    for ent in human_entities:
+        cx_m = ent.x + ent.width / 2
+        cy_m = ent.y + ent.height / 2
+
+        cx = cx_m * cfg.res
+        cy = cy_m * cfg.res
+        r = human_exclusion_radius_m * cfg.res
+
+        exclusion_circle = (xx - cx) ** 2 + (yy - cy) ** 2 <= r ** 2
+        ambient_mask[exclusion_circle] = False
+
+    # Remove sock source band
+    ambient_mask[room["src_y0"]:room["src_y1"], 1:-1] = False
+
+    return ambient_mask
+
+
+def run_simulation_and_collect_all(
+    thermal_grid, sock_tracer, u_vel, v_vel, p,
+    *,
+    step_fn,
+    frames,
+    substeps_per_frame,
+    dt,
+    room,
+    cfg,
+    is_obstacle,
+    persistent_hot_entities,
+    persistent_machine_entities,
+    res,
+    dynamic_entities_state,
+    real_start_timestamp=None,
+    machine_exclusion_radius_m=0.60,
+    human_exclusion_radius_m=0.30,
+    surround_pad_cells=3,
+    use_circular_machine_metrics=True,
+    default_machine_radius_m=0.30,
+    surround_outer_radius_m=0.60,
+):
+    state = {
+        "T": thermal_grid.copy(),
+        "tracer": sock_tracer.copy(),
+        "u": u_vel.copy(),
+        "v": v_vel.copy(),
+        "p": p.copy(),
+    }
+
+    records = []
+
+    for frame in range(frames):
+        for _ in range(substeps_per_frame):
+            state["T"], state["tracer"], state["u"], state["v"], state["p"] = step_fn(
+                state["T"], state["tracer"], state["u"], state["v"], state["p"]
+            )
+
+        sim_t = (frame + 1) * substeps_per_frame * dt
+        current_humans = dynamic_entities_state.get("humans", [])
+
+        # --- existing machine / room metrics ---
+        metrics = compute_metrics(
+            state["T"],
+            state["u"],
+            state["v"],
+            is_obstacle,
+            persistent_machine_entities,
+            res,
+            surround_pad_cells=surround_pad_cells,
+            use_circular_machine_metrics=use_circular_machine_metrics,
+            default_machine_radius_m=default_machine_radius_m,
+            surround_outer_radius_m=surround_outer_radius_m
+        )
+
+        # --- ambient metrics ---
+        ambient_mask = build_dynamic_ambient_mask(
+            room=room,
+            cfg=cfg,
+            persistent_hot_entities=persistent_hot_entities,
+            human_entities=current_humans,
+            default_hot_exclusion_radius_m=machine_exclusion_radius_m,
+            human_exclusion_radius_m=human_exclusion_radius_m,
+        )
+
+        ambient_values = state["T"][ambient_mask]
+
+        metrics["ambient_temp_median"] = float(np.median(ambient_values))
+        metrics["ambient_temp_mean"] = float(np.mean(ambient_values))
+        metrics["ambient_temp_std"] = float(np.std(ambient_values))
+        metrics["ambient_cell_count"] = int(np.sum(ambient_mask))
+        metrics["human_count"] = len(current_humans)
+
+        metrics["frame"] = frame + 1
+        metrics["sim_time_s"] = sim_t
+        metrics["sim_time_min"] = sim_t / 60.0
+
+        if real_start_timestamp is not None:
+            metrics["real_datetime"] = (
+                pd.Timestamp(real_start_timestamp) + pd.Timedelta(seconds=sim_t)
+            )
+
+        records.append(metrics)
+
+    df_all_metrics = pd.DataFrame(records)
+    return df_all_metrics, state

@@ -14,6 +14,13 @@ ENTITY_CATALOGE = {
         "darcy_resistance": 33.0,
         "is_active": True,
     },
+    "screen_source": {
+        "base_temperature": 30.0,
+        "blocks_airflow": False,
+        "friction": 0.0,
+        "darcy_resistance": 0.0,
+        "is_active": True,
+    },
     "air_conditioning": {
         "base_temperature": 18.0,
         "velocity": (0.0, -1.5),
