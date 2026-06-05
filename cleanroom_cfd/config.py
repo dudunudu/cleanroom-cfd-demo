@@ -21,7 +21,7 @@ class SimulationConfig:
     supply_temp: float = 20.5
 
     # Physics
-    alpha_heat: float = 2.2e-4
+    alpha_heat: float = 2.2e-5
     nu_eff: float = 1.5e-5
     rho: float = 1.208 
     beta_b: float = 0.0
@@ -40,5 +40,5 @@ class SimulationConfig:
     warmup_steps: int = 3000
 
     # Plotting
-    temp_vmin: float = 15.0
-    temp_vmax: float = 35.0
+    temp_vmin: float = 18.0
+    temp_vmax: float = 30.0
