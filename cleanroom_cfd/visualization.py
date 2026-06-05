@@ -29,8 +29,8 @@ def animate_simulation(
         cmap='magma',
         origin='lower',
         extent=[0, svg_width_m, 0, svg_height_m],
-        vmin=15,
-        vmax=35
+        vmin=18,
+        vmax=30
     )
 
     ax.contour(
