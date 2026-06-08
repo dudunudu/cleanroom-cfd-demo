@@ -27,3 +27,8 @@ conda activate cleanroom-cfd
 ```
 ## Run
 Install requirements, then open `notebooks/demo.ipynb`.
+
+## Temperature Field Simulation
+
+![Temperature field simulation](assets/temperature_field.png)
+The result of the simulation is a temperature field of the entire clean room
