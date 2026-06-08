@@ -1,19 +1,19 @@
 # Cleanroom CFD Demo
 
-A simplified CFD-style 2D cleanroom airflow and heat-transfer demo.
+A simplified 2D CFD-style model of cleanroom airflow and heat transfer, designed for testing, visualization, and validation workflows.
 
 ## Features
 
-- SVG-based room geometry
-- Obstacle mask generation
+- SVG-based room geometry parsing
+- Cartesian grid and obstacle-mask generation
 - Pressure-projection airflow update
 - Temperature advection and diffusion
 - Air-sock tracer visualization
-- Notebook demo for testing and presentation
+- Notebook-based demo for experimentation and presentation
 
-## Setup
+## Installation
 
-This project can be installed with Conda using the provided environment file.
+The project can be installed with Conda using the provided environment file.
 
 Create the environment with:
 
