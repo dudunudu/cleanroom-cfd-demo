@@ -1,16 +1,10 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, RegularPolygon
 from IPython.display import HTML, display
-
-
-def tracer_display(a, threshold=0.005):
-    return np.ma.masked_where(a < threshold, a)
-
-
-def tracer_alpha(a, threshold=0.005):
-    return np.clip((a - threshold) * 1.6, 0.0, 0.90)
+import pandas as pd
 
 
 def animate_simulation(
@@ -19,27 +13,24 @@ def animate_simulation(
     step_fn, frames, substeps_per_frame,
     svg_width_m, svg_height_m,
     is_obstacle, y_sock_m, sock_thickness_m,
-    hs_x_m, hs_y_m, v_sock_target, T_supply, dt
+    hs_x_m, hs_y_m, v_sock_target, T_supply, dt,
+    entities_list=None,
+    real_start_timestamp=None,
+    dynamic_entities_state=None,
+    save_gif_path=None,
+    gif_fps=8,
+    show_inline=False
 ):
     fig, ax = plt.subplots(figsize=(12, 8))
 
+    # Only show actual temperature
     temp_im = ax.imshow(
         thermal_grid,
         cmap='magma',
         origin='lower',
         extent=[0, svg_width_m, 0, svg_height_m],
-        vmin=8,
-        vmax=80
-    )
-
-    smoke_im = ax.imshow(
-        tracer_display(sock_tracer),
-        cmap='Blues',
-        origin='lower',
-        extent=[0, svg_width_m, 0, svg_height_m],
-        vmin=0,
-        vmax=0.15,
-        alpha=tracer_alpha(sock_tracer)
+        vmin=18,
+        vmax=30
     )
 
     ax.contour(
@@ -60,7 +51,25 @@ def animate_simulation(
     )
     ax.add_patch(sock_patch)
 
-    ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
+    # Draw persistent entities
+    if entities_list is not None:
+        for ent in entities_list:
+            # Outlets as circles
+            if ent.type == "pressure_outlet":
+                cx = ent.x + ent.width / 2
+                cy = ent.y + ent.height / 2
+                circle = plt.Circle(
+                    (cx, cy),
+                    radius=0.18,
+                    facecolor='none',
+                    edgecolor='lime',
+                    linewidth=1.5,
+                    alpha=0.8,
+                    zorder=5
+                )
+                ax.add_patch(circle)
+
+    # ax.plot(hs_x_m, hs_y_m, marker='o', markersize=5, color='white')
 
     plt.colorbar(temp_im, label='Temperature (°C)')
     ax.set_xlabel('X (meters)')
@@ -82,6 +91,38 @@ def animate_simulation(
         "p": p,
     }
 
+    human_patches = []
+
+    def draw_humans():
+        nonlocal human_patches
+
+        for patch in human_patches:
+            patch.remove()
+        human_patches = []
+
+        if dynamic_entities_state is None:
+            return
+
+        current_humans = dynamic_entities_state.get("humans", [])
+
+        for ent in current_humans:
+            cx = ent.x + ent.width / 2
+            cy = ent.y + ent.height / 2
+
+            tri = RegularPolygon(
+                (cx, cy),
+                numVertices=3,
+                radius=0.22,
+                orientation=np.pi / 2,
+                facecolor='cyan',
+                edgecolor='black',
+                linewidth=1.5,
+                alpha=0.95,
+                zorder=9
+            )
+            ax.add_patch(tri)
+            human_patches.append(tri)
+
     def update(frame):
         for _ in range(substeps_per_frame):
             state["T"], state["tracer"], state["u"], state["v"], state["p"] = step_fn(
@@ -89,23 +130,35 @@ def animate_simulation(
             )
 
         temp_im.set_data(state["T"])
-        smoke_im.set_data(tracer_display(state["tracer"]))
-        smoke_im.set_alpha(tracer_alpha(state["tracer"]))
+        draw_humans()
 
         sim_t = (frame + 1) * substeps_per_frame * dt
-        max_v = np.max(np.sqrt(state["u"] * state["u"] + state["v"] * state["v"]))
+        lines = [f"Sim time: {sim_t:.2f} s"]
 
-        ax.set_title('Temperature + air from air sock')
-        info_text.set_text(
-            f'Sim time: {sim_t:.2f} s\n'
-            f'Sock speed: {abs(v_sock_target):.2f} m/s\n'
-            f'Supply temp: {T_supply:.1f} °C\n'
-            f'Max air speed now: {max_v:.2f} m/s'
-        )
+        if real_start_timestamp is not None:
+            current_real_time = pd.Timestamp(real_start_timestamp) + pd.Timedelta(seconds=sim_t)
+            lines.append(f"Real date/time: {current_real_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-        return temp_im, smoke_im, info_text
+        lines.extend([
+            f"Sock speed: {abs(v_sock_target):.2f} m/s",
+            f"Supply temp: {T_supply:.1f} °C",
+        ])
+
+        ax.set_title('Temperature field')
+        info_text.set_text("\n".join(lines))
+
+        return [temp_im, info_text] + human_patches
 
     anim = FuncAnimation(fig, update, frames=frames, interval=120, blit=False)
+
+    if save_gif_path is not None:
+        save_dir = os.path.dirname(save_gif_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        anim.save(save_gif_path, writer="pillow", fps=gif_fps)
+
+    if show_inline:
+        display(HTML(anim.to_jshtml()))
+
     plt.close(fig)
-    display(HTML(anim.to_jshtml()))
     return anim
